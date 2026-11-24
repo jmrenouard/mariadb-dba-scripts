@@ -10,11 +10,12 @@
 #                                                                      #
 # Tested with MariaDB 10.0.28                                          #
 #                                                                      #
-# Usage: sh mariadb_log_purge.sh [OPTIONS]                             #
+# Usage: bash mariadb_log_purge.sh [OPTIONS]                           #
 #                                                                      #
 # The following options may be given as the first argument:            #
 # --err    purge error log                                             #
 # --slow   purge slow log                                              #
+# --help   show usage help                                             #
 #                                                                      #
 ########################################################################
 
@@ -22,15 +23,15 @@
 # Set Environments
 ####################################
 
-DB_NAME='LGUERP_PROD'
+DB_NAME="${DB_NAME:-LGUERP_PROD}"
 
-RESERVE_DAYS=4 #DON'T  BE SET LESS THAN 1
+RESERVE_DAYS="${RESERVE_DAYS:-4}" # MUST NOT BE SET LESS THAN 1
 
-ERROR_LOG_HOME="/logs001/masvc01/${DB_NAME}/error"
-ERROR_LOG_NAME='mysqld.err'
+ERROR_LOG_HOME="${ERROR_LOG_HOME:-/logs001/masvc01/${DB_NAME}/error}"
+ERROR_LOG_NAME="${ERROR_LOG_NAME:-mysqld.err}"
 
-SLOW_LOG_HOME="/logs001/masvc01/${DB_NAME}/slow"
-SLOW_LOG_NAME='mysvc01-slow.log'
+SLOW_LOG_HOME="${SLOW_LOG_HOME:-/logs001/masvc01/${DB_NAME}/slow}"
+SLOW_LOG_NAME="${SLOW_LOG_NAME:-mysvc01-slow.log}"
 
 
 
@@ -39,38 +40,54 @@ SLOW_LOG_NAME='mysvc01-slow.log'
 # execute purge job
 ####################################
 
+fn_usage() {
+  echo ""
+  echo "Usage: bash mariadb_log_purge.sh [OPTIONS]"
+  echo ""
+  echo "The following options may be given as the first argument:"
+  echo "--err     purge error log"
+  echo "--slow    purge slow log"
+  echo "--help    show usage help"
+  echo ""
+}
+
 case "${1}" in
 "--err")
-  LOG_HOME=${ERROR_LOG_HOME}
-  LOG_NAME=${ERROR_LOG_NAME}
+  LOG_HOME="${ERROR_LOG_HOME}"
+  LOG_NAME="${ERROR_LOG_NAME}"
   ;;
 "--slow")
-  LOG_HOME=${SLOW_LOG_HOME}
-  LOG_NAME=${SLOW_LOG_NAME}
+  LOG_HOME="${SLOW_LOG_HOME}"
+  LOG_NAME="${SLOW_LOG_NAME}"
+  ;;
+"--help"|"-h")
+  fn_usage
+  exit 0
   ;;
 *)
-  echo ""
-  echo "Usage: sh mariadb_log_purge.sh [OPTIONS] "
-  echo ""
-  echo "The following options may be given as the first argument: "
-  echo "--err    purge error log"
-  echo "--slow   purge slow log"
-  echo ""
-  exit 0;;
+  fn_usage >&2
+  exit 1
+  ;;
 esac
 
 # check dir exists and is writable
-if test ! -d $LOG_HOME -o ! -w $LOG_HOME
+if [ -z "${LOG_HOME}" ] || [ ! -d "${LOG_HOME}" ] || [ ! -w "${LOG_HOME}" ]
 then
-  echo $LOG_HOME ' does not exist or is not writable'
+  echo "${LOG_HOME} does not exist or is not writable" >&2
   exit 1
 fi
 
-cp ${LOG_HOME}/${LOG_NAME} "${LOG_HOME}/${LOG_NAME}.`date +%Y%m%d_%H`"
-echo '' > ${LOG_HOME}/${LOG_NAME}
+if [ ! -f "${LOG_HOME}/${LOG_NAME}" ]
+then
+  echo "${LOG_HOME}/${LOG_NAME} does not exist" >&2
+  exit 1
+fi
 
-for OLD_NAME in $(find ${LOG_HOME} -maxdepth 1 -type f -mtime +${RESERVE_DAYS})
+cp "${LOG_HOME}/${LOG_NAME}" "${LOG_HOME}/${LOG_NAME}.`date +%Y%m%d_%H`"
+: > "${LOG_HOME}/${LOG_NAME}"
+
+for OLD_NAME in $(find "${LOG_HOME}" -mindepth 1 -maxdepth 1 -type f -mtime "+${RESERVE_DAYS}")
 do
   echo "rm -rf ${OLD_NAME}"
-  #rm -rf ${OLD_NAME}
+  #rm -rf "${OLD_NAME}"
 done
