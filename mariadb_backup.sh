@@ -10,7 +10,7 @@
 #                                                                      #
 # Tested with XtraBackup 2.4 on MariaDB 10.0.28                        #
 #                                                                      #
-# Usage: sh mariadb_backup.sh [OPTIONS]                                #
+# Usage: bash mariadb_backup.sh [OPTIONS]                                #
 #                                                                      #
 # The following options may be given as the first argument:            #
 # --full      Full Backup                                              #
@@ -20,6 +20,7 @@
 # --engine    Engine Backup                                            #
 # --delete    Delete Old Backups                                       #
 # --list      Show list of backups on disk                             #
+# --help      Show usage help                                          #
 #                                                                      #
 ########################################################################
 
@@ -27,30 +28,30 @@
 # Set Environments
 ####################################
 
-DB_NAME='DBNAME'
-MY_CNF="/engn001/masvc01/${DB_NAME}/my.cnf"
+DB_NAME="${DB_NAME:-DBNAME}"
+MY_CNF="${MY_CNF:-/engn001/masvc01/${DB_NAME}/my.cnf}"
 
-RESERVE_DAYS=14 #DON'T  BE SET LESS THAN 1
+RESERVE_DAYS="${RESERVE_DAYS:-14}" # MUST NOT BE SET LESS THAN 1
 
-OS_USER='masvc01'
-DB_USER='bkupusr'
-DB_PWD='bkupusr_password'
-SOCKET="/engn001/masvc01/${DB_NAME}/mysqld.sock"
+OS_USER="${OS_USER:-masvc01}"
+DB_USER="${DB_USER:-bkupusr}"
+DB_PWD="${DB_PWD:-}"
+SOCKET="${SOCKET:-/engn001/masvc01/${DB_NAME}/mysqld.sock}"
 
-ENGINE_HOME='/engn001/masvc01/mariadb-10.0.28'
-XTRABACKUP_HOME='/engn001/masvc01/percona-xtrabackup-2.4'
+ENGINE_HOME="${ENGINE_HOME:-/engn001/masvc01/mariadb-10.0.28}"
+XTRABACKUP_HOME="${XTRABACKUP_HOME:-/engn001/masvc01/percona-xtrabackup-2.4}"
 
-LOGBIN_HOME="/logs001/masvc01/${DB_NAME}/binary"
+LOGBIN_HOME="${LOGBIN_HOME:-/logs001/masvc01/${DB_NAME}/binary}"
 
-BACKUP_HOME="/bkup001/masvc01/${DB_NAME}"
-LOG_HOME="/bkup001/masvc01/${DB_NAME}/backup_log"
-LOG_FILE="${LOG_HOME}/backup.db.`date +%Y%m%d%H%M%S`.log"
-LOG_HISTORY="${LOG_HOME}/backup_all_history.log"
+BACKUP_HOME="${BACKUP_HOME:-/bkup001/masvc01/${DB_NAME}}"
+LOG_HOME="${LOG_HOME:-/bkup001/masvc01/${DB_NAME}/backup_log}"
+LOG_FILE="${LOG_FILE:-${LOG_HOME}/backup.db.`date +%Y%m%d%H%M%S`.log}"
+LOG_HISTORY="${LOG_HISTORY:-${LOG_HOME}/backup_all_history.log}"
 
-MYSQL="${ENGINE_HOME}/bin/mysql --user=${DB_USER} --password=${DB_PWD} --socket=${SOCKET}"
-MYSQLDUMP="${ENGINE_HOME}/bin/mysqldump --user=${DB_USER} --password=${DB_PWD} --socket=${SOCKET}"
-MYSQLADMIN="${ENGINE_HOME}/bin/mysqladmin --user=${DB_USER} --password=${DB_PWD} --socket=${SOCKET}"
-XTRABACKUP="${XTRABACKUP_HOME}/bin/xtrabackup --defaults-file=${MY_CNF} --user=${DB_USER} --password=${DB_PWD}"
+MYSQL="${MYSQL:-${ENGINE_HOME}/bin/mysql --user=${DB_USER} --password=${DB_PWD} --socket=${SOCKET}}"
+MYSQLDUMP="${MYSQLDUMP:-${ENGINE_HOME}/bin/mysqldump --user=${DB_USER} --password=${DB_PWD} --socket=${SOCKET}}"
+MYSQLADMIN="${MYSQLADMIN:-${ENGINE_HOME}/bin/mysqladmin --user=${DB_USER} --password=${DB_PWD} --socket=${SOCKET}}"
+XTRABACKUP="${XTRABACKUP:-${XTRABACKUP_HOME}/bin/xtrabackup --defaults-file=${MY_CNF} --user=${DB_USER} --password=${DB_PWD}}"
 
 
 
@@ -136,11 +137,11 @@ fn_schema_backup() {
 
   # schema backup
   BACKUP_NAME=${DB_NAME}_schema_`date +'%Y%m%d_%H%M'`
-  if [ ! -d ${BACKUP_HOME}/${BACKUP_NAME} ]
+  if [ ! -d "${BACKUP_HOME}/${BACKUP_NAME}" ]
   then
-    mkdir ${BACKUP_HOME}/${BACKUP_NAME} | tee -a  $LOG_FILE
+    mkdir -p "${BACKUP_HOME}/${BACKUP_NAME}" 2>&1 | tee -a "${LOG_FILE}"
   fi
-  ${MYSQLDUMP} -A --single-transaction --skip-add-drop-table --no-data --routines --events > ${BACKUP_HOME}/${BACKUP_NAME}/${BACKUP_NAME}.sql | tee -a $LOG_FILE
+  { ${MYSQLDUMP} -A --single-transaction --skip-add-drop-table --no-data --routines --events > "${BACKUP_HOME}/${BACKUP_NAME}/${BACKUP_NAME}.sql"; } 2>&1 | tee -a "${LOG_FILE}"
 
   REC_END_TIME=`date "+%Y-%m-%d %H:%M:%S"`
   END_TIME=`date +%s`
@@ -211,17 +212,23 @@ fn_delete_backups() {
   REC_START_TIME=`date "+%Y-%m-%d %H:%M:%S"`
   START_TIME=`date +%s`
 
-  for BACKUP_NAME in $(find ${BACKUP_HOME} -maxdepth 1 -type d -mtime +${RESERVE_DAYS})
-  do
-    echo "rm -rf ${BACKUP_NAME}" | tee -a $LOG_FILE
-    rm -rf ${BACKUP_NAME}        | tee -a $LOG_FILE
-  done
+  if [ -n "${BACKUP_HOME}" ] && [ -d "${BACKUP_HOME}" ]
+  then
+    for BACKUP_NAME in $(find "${BACKUP_HOME}" -mindepth 1 -maxdepth 1 -type d -mtime "+${RESERVE_DAYS}")
+    do
+      echo "rm -rf ${BACKUP_NAME}" | tee -a "${LOG_FILE}"
+      rm -rf "${BACKUP_NAME}" 2>&1 | tee -a "${LOG_FILE}"
+    done
+  fi
 
-  for BACKUP_NAME in $(find ${BACKUP_HOME}//binary_backup -type f -mtime +${RESERVE_DAYS})
-  do
-    echo "rm -rf ${BACKUP_NAME}" | tee -a $LOG_FILE
-    rm -rf ${BACKUP_NAME}        | tee -a $LOG_FILE
-  done
+  if [ -d "${BACKUP_HOME}/binary_backup" ]
+  then
+    for BACKUP_NAME in $(find "${BACKUP_HOME}/binary_backup" -type f -mtime "+${RESERVE_DAYS}")
+    do
+      echo "rm -rf ${BACKUP_NAME}" | tee -a "${LOG_FILE}"
+      rm -rf "${BACKUP_NAME}" 2>&1 | tee -a "${LOG_FILE}"
+    done
+  fi
 
   REC_END_TIME=`date "+%Y-%m-%d %H:%M:%S"`
   END_TIME=`date +%s`
@@ -230,7 +237,7 @@ fn_delete_backups() {
   BACKUPTYPE='delete'
   BACKUPSIZE=0
 
-  fn_write_history "${DB_NAME},${DB_USER},${REC_START_TIME},${REC_END_TIME},${LAP_TIME},${BACKUPSIZE},${BACKUPTYPE},${BACKUP_HOME}/${BACKUP_NAME},${LOG_FILE}"
+  fn_write_history "${DB_NAME},${DB_USER},${REC_START_TIME},${REC_END_TIME},${LAP_TIME},${BACKUPSIZE},${BACKUPTYPE},${BACKUP_HOME},${LOG_FILE}"
 }
 
 ####################################
@@ -239,29 +246,29 @@ fn_delete_backups() {
 fn_list_backups() {
 
   # List of full/incremental backup
-  for BACKUP_NAME in $(find ${BACKUP_HOME} -name xtrabackup_info -type f -exec grep innodb_to_lsn {} + | sort -t "=" -k2 -n | cut -d ":" -f 1)
+  for BACKUP_NAME in $(find "${BACKUP_HOME}" -name xtrabackup_info -type f -exec grep -H innodb_to_lsn {} + | sort -t "=" -k2 -n | cut -d ":" -f 1)
   do
     echo "####################"
-    echo '# Path: '${BACKUP_NAME/"/xtrabackup_info"//}
+    echo '# Path: '"${BACKUP_NAME/"/xtrabackup_info"//}"
     echo "####################"
-    grep "backup_type =" ${BACKUP_NAME/"/xtrabackup_info"//}xtrabackup_checkpoints
-    grep -E 'start_time =|end_time =|partial =|incremental =|binlog_pos =' ${BACKUP_NAME}
+    grep "backup_type =" "${BACKUP_NAME/"/xtrabackup_info"//}xtrabackup_checkpoints"
+    grep -E 'start_time =|end_time =|partial =|incremental =|binlog_pos =' "${BACKUP_NAME}"
   done
 
   # List of binlog backup
-  if [ -d ${BACKUP_HOME}/binary_backup ]
+  if [ -d "${BACKUP_HOME}/binary_backup" ]
   then
     echo "####################"
     echo "# Path: ${BACKUP_HOME}/binary_backup (Backuped Binlog)"
     echo "####################"
-    ls ${BACKUP_HOME}/binary_backup
+    ls "${BACKUP_HOME}/binary_backup"
   fi
 
   # List of schema backup
   echo "####################"
   echo "Schema Backups"
   echo "####################"
-  find ${BACKUP_HOME} -name ${DB_NAME}_schema* -type d | sort
+  find "${BACKUP_HOME}" -name "${DB_NAME}_schema*" -type d | sort
 
 }
 
@@ -270,6 +277,22 @@ fn_list_backups() {
 ####################################
 # Pre-check before backup
 ####################################
+
+fn_usage() {
+  echo ""
+  echo "Usage: bash mariadb_backup.sh [OPTIONS]"
+  echo ""
+  echo "The following options may be given as the first argument:"
+  echo "--full      Full Backup"
+  echo "--incre     Incremental Backup"
+  echo "--schema    Schema Backup"
+  echo "--binlog    Binary Log Backup"
+  echo "--engine    Engine Backup"
+  echo "--delete    Delete Old Backups"
+  echo "--list      Show list of backups on disk"
+  echo "--help      Show usage help"
+  echo ""
+}
 
 # check OPTIONS
 case "${1}" in
@@ -280,47 +303,57 @@ case "${1}" in
 "--engine") ;;
 "--delete") ;;
 "--list") ;;
+"--help"|"-h")
+  fn_usage
+  exit 0
+  ;;
 *)
-  echo ""
-  echo "Usage: sh mariadb_backup.sh [OPTIONS] "
-  echo ""
-  echo "The following options may be given as the first argument: "
-  echo "--full      Full Backup "
-  echo "--incre     Incremental Backup "
-  echo "--schema    Schema Backup"
-  echo "--binlog    Binary Log Backup "
-  echo "--engine    Engine Backup "
-  echo "--delete    Delete Old Backups "
-  echo "--list      Show list of backups on disk"
-  echo ""
-  exit 0;;
+  fn_usage >&2
+  exit 1
+  ;;
 esac
 
-# check log dir
-if test ! -d $LOG_HOME -o ! -w $LOG_HOME
+# check base dir exists
+if [ -z "${BACKUP_HOME}" ] || [ ! -d "${BACKUP_HOME}" ]
 then
-  mkdir $LOG_HOME
-fi
-
-# check base dir exists and is writable
-if test ! -d $BACKUP_HOME -o ! -w $BACKUP_HOME
-then
-  echo $BACKUP_HOME ' does not exist or is not writable' 2>&1 | tee -a $LOG_FILE
+  if [ "${1}" = "--list" ]
+  then
+    echo "${BACKUP_HOME} does not exist" >&2
+  else
+    mkdir -p "${LOG_HOME}"
+    echo "${BACKUP_HOME} does not exist" 2>&1 | tee -a "${LOG_FILE}"
+  fi
   exit 1
 fi
 
-# check if mysql service up
-if [ -z "`${MYSQLADMIN} status | grep 'Uptime'`" ]
+if [ "${1}" != "--list" ]
 then
-  echo "Failed : MySQL does not appear to be running." 2>&1 | tee -a $LOGFILE
-  exit 1
-fi
+  # check log dir
+  if [ ! -d "${LOG_HOME}" ] || [ ! -w "${LOG_HOME}" ]
+  then
+    mkdir -p "${LOG_HOME}"
+  fi
 
-# check if pasword correct
-if ! `echo 'exit' | ${MYSQL}`
-then
-  echo "Failed : mysql username or password is incorrect" 2>&1 | tee -a $LOGFILE
-  exit 1
+  # check base dir is writable
+  if [ ! -w "${BACKUP_HOME}" ]
+  then
+    echo "${BACKUP_HOME} is not writable" 2>&1 | tee -a "${LOG_FILE}"
+    exit 1
+  fi
+
+  # check if mysql service up
+  if [ -z "`${MYSQLADMIN} status | grep 'Uptime'`" ]
+  then
+    echo "Failed : MySQL does not appear to be running." 2>&1 | tee -a "${LOG_FILE}"
+    exit 1
+  fi
+
+  # check if password correct
+  if ! echo 'exit' | ${MYSQL} >/dev/null 2>&1
+  then
+    echo "Failed : mysql username or password is incorrect" 2>&1 | tee -a "${LOG_FILE}"
+    exit 1
+  fi
 fi
 
 # execute job

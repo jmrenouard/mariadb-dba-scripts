@@ -22,7 +22,7 @@
 #########################################################################
 #                                                                       #
 # Set this socket variable ONLY if you have multiple instances running  #
-# or we are unable to find your socket, and you don't want to to be     #
+# or we are unable to find your socket, and you don't want to be        #
 # prompted for input each time you run this script.                     #
 #                                                                       #
 #########################################################################
@@ -57,10 +57,6 @@ get_system_info () {
         ps_socket=$(netstat -an | awk '/mysql(.*)?.sock/ { print $5 }' | head -1)
         found_socks=$(netstat -an | awk '/mysql(.*)?.sock/ { print $5 }')
         export physical_memory=$(prtconf | awk '/^Memory\ size:/ { print $3*1048576 }')
-    fi
-    if [ -z $(which bc) ] ; then
-        echo "Error: Command line calculator 'bc' not found!"
-        exit
     fi
 }
 
@@ -98,7 +94,7 @@ check_basedir () {
             esac
     }
 
-    if [ -d $basedir ] ; then
+    if [ -n "$basedir" ] && [ -d "$basedir" ] ; then
         mysql=$basedir/bin/mysql
         mysqldump=$basedir/bin/mysqldump
         mysqladmin=$basedir/bin/mysqladmin
@@ -145,8 +141,8 @@ check_mysql_login () {
         printf "\n"
         login_failed
     else
-        echo "Unknow exit status"
-        exit -1
+        echo "Unknown exit status"
+        exit 1
     fi
 }
 
@@ -165,15 +161,15 @@ login_failed () {
             ;;
         esac
 
-    ##-- set mysql evironment
+    ##-- set mysql environment
     echo ""
     echo "Please input username and password to connect to DB"
     read -p "User: " user
     read -srp "Password: " pass
-    if [ -z $pass ] ; then
+    if [ -z "$pass" ] ; then
         export mysql="$mysql -S$socket -u$user"
         export mysqladmin="$mysqladmin -S$socket -u$user"
-        export mysqldump="$mysqladmin -S$socket -u$user"
+        export mysqldump="$mysqldump -S$socket -u$user"
     else
         export mysql="$mysql -S$socket -u$user -p$pass"
         export mysqladmin="$mysqladmin -S$socket -u$user -p$pass"
@@ -198,6 +194,15 @@ login_validation () {
 ## ---------- ##
 ## -- Main -- ##
 ## ---------- ##
+
+if [ "$1" = "--help" ] || [ "$1" = "-h" ] ; then
+    echo "Usage: ./mysql_get_config.sh"
+    echo "Inspects MariaDB/MySQL OS environment, basedir, socket, and interactive client connection settings."
+    exit 0
+elif [ -n "$1" ] ; then
+    echo "Usage: ./mysql_get_config.sh [--help]" >&2
+    exit 1
+fi
 
 get_system_info
 
